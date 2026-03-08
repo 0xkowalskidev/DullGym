@@ -1,0 +1,35 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+android/.gradle/
+android/app/debug/
+android/app/release/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+key.properties
+
+# iOS (not used, but just in case)
+ios/.symlinks/
+ios/Pods/
+ios/.generated/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Nix
+result
+result-*
+
+# Misc
+*.log
+.DS_Store
