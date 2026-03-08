@@ -454,7 +454,7 @@ class DatabaseHelper {
     final exerciseMap = {for (final exercise in exercises) exercise.id: exercise};
 
     final rows = <List<dynamic>>[
-      ['Workout Date', 'Exercise', 'Exercise Type', 'Muscle Group', 'Set #', 'Reps', 'Weight (kg)', 'Duration (s)', 'Notes'],
+      ['Workout Date', 'Exercise', 'Exercise Type', 'Muscle Group', 'Set #', 'Reps', 'Weight (kg)', 'Duration (s)', 'Distance (m)', 'Notes'],
     ];
 
     for (final workout in workouts) {
@@ -463,7 +463,7 @@ class DatabaseHelper {
       if (sets.isEmpty) {
         rows.add([
           workout.date.toIso8601String(),
-          '', '', '', '', '', '', '',
+          '', '', '', '', '', '', '', '',
           workout.notes ?? '',
         ]);
       } else {
@@ -478,6 +478,7 @@ class DatabaseHelper {
             set['repetitions'] ?? '',
             set['weight_kg'] ?? '',
             set['duration_seconds'] ?? '',
+            set['distance_meters'] ?? '',
             set['notes'] ?? '',
           ]);
         }

@@ -50,22 +50,22 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
 
   Future<void> _loadData() async {
     final exercises = await DatabaseHelper.instance.getAllExercises();
-    final exerciseMap = {for (final e in exercises) e.id: e};
+    final exerciseMap = {for (final exercise in exercises) exercise.id: exercise};
 
     if (_isEditing) {
       _nameController.text = widget.existingTemplate!.name;
       final templateSets = await DatabaseHelper.instance
           .getTemplateSetsForTemplate(widget.existingTemplate!.id!);
 
-      for (final ts in templateSets) {
-        final exercise = exerciseMap[ts.exerciseId];
+      for (final templateSet in templateSets) {
+        final exercise = exerciseMap[templateSet.exerciseId];
         if (exercise != null) {
           _sets.add(_PendingTemplateSet(
             exercise: exercise,
-            targetRepetitions: ts.targetRepetitions,
-            targetWeightInKilograms: ts.targetWeightInKilograms,
-            targetDurationInSeconds: ts.targetDurationInSeconds,
-            targetDistanceInMeters: ts.targetDistanceInMeters,
+            targetRepetitions: templateSet.targetRepetitions,
+            targetWeightInKilograms: templateSet.targetWeightInKilograms,
+            targetDurationInSeconds: templateSet.targetDurationInSeconds,
+            targetDistanceInMeters: templateSet.targetDistanceInMeters,
           ));
         }
       }
