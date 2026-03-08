@@ -155,7 +155,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
 
   Future<void> _loadExercises() async {
     final exercises = await DatabaseHelper.instance.getAllExercises();
-    final exerciseMap = {for (final e in exercises) e.id: e};
+    final exerciseMap = {for (final exercise in exercises) exercise.id: exercise};
 
     if (widget.templateSets != null) {
       for (final templateSet in widget.templateSets!) {
