@@ -54,7 +54,7 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<ExerciseType>(
-                  value: selectedType,
+                  initialValue: selectedType,
                   decoration: const InputDecoration(labelText: 'Type'),
                   items: ExerciseType.values.map((type) {
                     return DropdownMenuItem(

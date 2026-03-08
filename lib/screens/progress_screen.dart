@@ -122,7 +122,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: DropdownButtonFormField<Exercise>(
-                        value: _selectedExercise,
+                        initialValue: _selectedExercise,
                         decoration: const InputDecoration(
                           labelText: 'Select Exercise',
                           border: OutlineInputBorder(),
