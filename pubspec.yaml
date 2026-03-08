@@ -1,0 +1,40 @@
+name: dullgym
+description: A no-nonsense local workout tracking app for Android.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Database
+  sqflite: ^2.3.0
+  path: ^1.8.3
+
+  # Charts
+  fl_chart: ^0.66.0
+
+  # CSV export
+  csv: ^6.0.0
+  path_provider: ^2.1.1
+  share_plus: ^7.2.1
+
+  # Date handling
+  intl: ^0.18.1
+
+  # Haptic feedback
+  vibration: ^2.0.0
+
+  # Sound
+  flutter_ringtone_player: ^4.0.0+3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
