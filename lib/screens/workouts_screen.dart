@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'package:dullgym/database/database_helper.dart';
 import 'package:dullgym/models/models.dart';
@@ -88,21 +87,6 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
     }
   }
 
-  Future<void> _exportData() async {
-    try {
-      final file = await DatabaseHelper.instance.exportAllDataToCsv();
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'DullGym Export',
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $error')),
-      );
-    }
-  }
-
   Future<void> _deleteWorkout(Workout workout) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
@@ -139,31 +123,21 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Workouts'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _exportData,
-            tooltip: 'Export to CSV',
-          ),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView(
+        children: [
+          _buildQuickStartSection(),
+          const Divider(),
+          _buildEmptyWorkoutButton(),
+          const Divider(),
+          _buildHistorySection(),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: ListView(
-                children: [
-                  _buildQuickStartSection(),
-                  const Divider(),
-                  _buildEmptyWorkoutButton(),
-                  const Divider(),
-                  _buildHistorySection(),
-                ],
-              ),
-            ),
     );
   }
 
