@@ -187,9 +187,6 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Exercises'),
-      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _exercises.isEmpty

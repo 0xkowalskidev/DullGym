@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:dullgym/screens/exercises_screen.dart';
 import 'package:dullgym/screens/progress_screen.dart';
+import 'package:dullgym/screens/settings_screen.dart';
 import 'package:dullgym/screens/workouts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,9 +21,32 @@ class _HomeScreenState extends State<HomeScreen> {
     ProgressScreen(),
   ];
 
+  final List<String> _titles = const [
+    'Workouts',
+    'Exercises',
+    'Progress',
+  ];
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_titles[_selectedNavigationIndex]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _openSettings,
+            tooltip: 'Settings',
+          ),
+        ],
+      ),
       body: _screens[_selectedNavigationIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedNavigationIndex,

@@ -92,9 +92,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Progress'),
-      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _workouts.isEmpty

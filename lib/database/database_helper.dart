@@ -441,52 +441,385 @@ class DatabaseHelper {
 
   // ============ CSV Export ============
 
+  String _csvRow(List<dynamic> values) {
+    return const ListToCsvConverter().convert([values]).trim();
+  }
+
   Future<File> exportAllDataToCsv() async {
     final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
     final file = File('${directory.path}/dullgym_export_$timestamp.csv');
 
-    final exercises = await getAllExercises();
-    final workouts = await getAllWorkouts();
     final database = await this.database;
-    final allSets = await database.query('workout_sets');
+    final buffer = StringBuffer();
 
+    // === EXERCISES ===
+    final exercises = await getAllExercises();
     final exerciseMap = {for (final exercise in exercises) exercise.id: exercise};
 
-    final rows = <List<dynamic>>[
-      ['Workout Date', 'Exercise', 'Exercise Type', 'Muscle Group', 'Set #', 'Reps', 'Weight (kg)', 'Duration (s)', 'Distance (m)', 'Notes'],
-    ];
+    buffer.writeln('# EXERCISES');
+    buffer.writeln(_csvRow(['Name', 'Type', 'Muscle Group', 'Notes']));
+    for (final exercise in exercises) {
+      buffer.writeln(_csvRow([
+        exercise.name,
+        exercise.type.name,
+        exercise.muscleGroup ?? '',
+        exercise.notes ?? '',
+      ]));
+    }
+    buffer.writeln();
 
+    // === TEMPLATES ===
+    final templates = await getAllWorkoutTemplates();
+    buffer.writeln('# TEMPLATES');
+    buffer.writeln(_csvRow([
+      'Template Name', 'Exercise', 'Type', 'Set Order',
+      'Target Reps', 'Target Weight (kg)', 'Target Duration (s)', 'Target Distance (m)',
+    ]));
+    for (final template in templates) {
+      final templateSets = await getTemplateSetsForTemplate(template.id!);
+      for (final templateSet in templateSets) {
+        final exercise = exerciseMap[templateSet.exerciseId];
+        buffer.writeln(_csvRow([
+          template.name,
+          exercise?.name ?? 'Unknown',
+          exercise?.type.name ?? '',
+          templateSet.setOrder,
+          templateSet.targetRepetitions ?? '',
+          templateSet.targetWeightInKilograms ?? '',
+          templateSet.targetDurationInSeconds ?? '',
+          templateSet.targetDistanceInMeters ?? '',
+        ]));
+      }
+    }
+    buffer.writeln();
+
+    // === WORKOUTS ===
+    final workouts = await getAllWorkouts();
+    buffer.writeln('# WORKOUTS');
+    buffer.writeln(_csvRow(['Workout Date', 'Duration (s)', 'Notes']));
     for (final workout in workouts) {
-      final sets = allSets.where((set) => set['workout_id'] == workout.id).toList();
+      buffer.writeln(_csvRow([
+        workout.date.toIso8601String(),
+        workout.durationInSeconds,
+        workout.notes ?? '',
+      ]));
+    }
+    buffer.writeln();
 
-      if (sets.isEmpty) {
-        rows.add([
-          workout.date.toIso8601String(),
-          '', '', '', '', '', '', '', '',
-          workout.notes ?? '',
-        ]);
-      } else {
-        for (final set in sets) {
-          final exercise = exerciseMap[set['exercise_id']];
-          rows.add([
-            workout.date.toIso8601String(),
-            exercise?.name ?? 'Unknown',
-            exercise?.type.name ?? '',
-            exercise?.muscleGroup ?? '',
-            set['set_order'],
-            set['repetitions'] ?? '',
-            set['weight_kg'] ?? '',
-            set['duration_seconds'] ?? '',
-            set['distance_meters'] ?? '',
-            set['notes'] ?? '',
-          ]);
-        }
+    // === WORKOUT_SETS ===
+    final allSets = await database.query('workout_sets', orderBy: 'workout_id, set_order');
+    final workoutMap = {for (final workout in workouts) workout.id: workout};
+
+    buffer.writeln('# WORKOUT_SETS');
+    buffer.writeln(_csvRow([
+      'Workout Date', 'Exercise', 'Type', 'Set Order',
+      'Reps', 'Weight (kg)', 'Duration (s)', 'Distance (m)', 'Notes',
+    ]));
+    for (final set in allSets) {
+      final workout = workoutMap[set['workout_id']];
+      final exercise = exerciseMap[set['exercise_id']];
+      buffer.writeln(_csvRow([
+        workout?.date.toIso8601String() ?? '',
+        exercise?.name ?? 'Unknown',
+        exercise?.type.name ?? '',
+        set['set_order'],
+        set['repetitions'] ?? '',
+        set['weight_kg'] ?? '',
+        set['duration_seconds'] ?? '',
+        set['distance_meters'] ?? '',
+        set['notes'] ?? '',
+      ]));
+    }
+
+    await file.writeAsString(buffer.toString());
+    return file;
+  }
+
+  // ============ CSV Import ============
+
+  Future<void> clearAllData() async {
+    final database = await this.database;
+    // Delete in order respecting foreign keys
+    await database.delete('workout_sets');
+    await database.delete('workouts');
+    await database.delete('template_sets');
+    await database.delete('workout_templates');
+    await database.delete('exercises');
+  }
+
+  Future<ImportResult> importFromCsv(String filePath, {required bool replaceExisting}) async {
+    final file = File(filePath);
+    final csvContent = await file.readAsString();
+
+    if (replaceExisting) {
+      await clearAllData();
+    }
+
+    final database = await this.database;
+
+    // Parse sections
+    final sections = _parseCsvSections(csvContent);
+
+    // Track entities for FK resolution
+    final exerciseCache = <String, int>{}; // "name|type" -> id
+    final templateCache = <String, int>{}; // "name" -> id
+    final workoutCache = <String, int>{}; // "date" -> id
+
+    // Load existing entities for merge mode
+    if (!replaceExisting) {
+      for (final exercise in await getAllExercises()) {
+        exerciseCache['${exercise.name}|${exercise.type.name}'] = exercise.id!;
+      }
+      for (final template in await getAllWorkoutTemplates()) {
+        templateCache[template.name] = template.id!;
+      }
+      for (final workout in await getAllWorkouts()) {
+        workoutCache[workout.date.toIso8601String()] = workout.id!;
       }
     }
 
-    final csvString = const ListToCsvConverter().convert(rows);
-    await file.writeAsString(csvString);
-    return file;
+    int exercisesImported = 0;
+    int templatesImported = 0;
+    int workoutsImported = 0;
+    int setsImported = 0;
+    int rowsSkipped = 0;
+
+    // === Import EXERCISES ===
+    final exerciseRows = sections['EXERCISES'] ?? [];
+    for (final row in exerciseRows) {
+      if (row.length < 2) {
+        rowsSkipped++;
+        continue;
+      }
+      final name = row[0]?.toString() ?? '';
+      final typeStr = row[1]?.toString() ?? '';
+      final muscleGroup = row.length > 2 ? row[2]?.toString() : null;
+      final notes = row.length > 3 ? row[3]?.toString() : null;
+
+      if (name.isEmpty || typeStr.isEmpty) {
+        rowsSkipped++;
+        continue;
+      }
+
+      final exerciseType = _parseExerciseType(typeStr);
+      if (exerciseType == null) {
+        rowsSkipped++;
+        continue;
+      }
+
+      final key = '$name|${exerciseType.name}';
+      if (!exerciseCache.containsKey(key)) {
+        final id = await database.insert('exercises', {
+          'name': name,
+          'type': exerciseType.name,
+          'muscle_group': muscleGroup?.isNotEmpty == true ? muscleGroup : null,
+          'notes': notes?.isNotEmpty == true ? notes : null,
+        });
+        exerciseCache[key] = id;
+        exercisesImported++;
+      }
+    }
+
+    // === Import TEMPLATES ===
+    final templateRows = sections['TEMPLATES'] ?? [];
+    for (final row in templateRows) {
+      if (row.length < 4) {
+        rowsSkipped++;
+        continue;
+      }
+      final templateName = row[0]?.toString() ?? '';
+      final exerciseName = row[1]?.toString() ?? '';
+      final exerciseTypeStr = row[2]?.toString() ?? '';
+      final setOrderStr = row[3]?.toString() ?? '';
+      final targetRepsStr = row.length > 4 ? row[4]?.toString() : null;
+      final targetWeightStr = row.length > 5 ? row[5]?.toString() : null;
+      final targetDurationStr = row.length > 6 ? row[6]?.toString() : null;
+      final targetDistanceStr = row.length > 7 ? row[7]?.toString() : null;
+
+      if (templateName.isEmpty || exerciseName.isEmpty) {
+        rowsSkipped++;
+        continue;
+      }
+
+      // Find or create template
+      int templateId;
+      if (templateCache.containsKey(templateName)) {
+        templateId = templateCache[templateName]!;
+      } else {
+        templateId = await database.insert('workout_templates', {'name': templateName});
+        templateCache[templateName] = templateId;
+        templatesImported++;
+      }
+
+      // Find exercise
+      final exerciseKey = '$exerciseName|$exerciseTypeStr';
+      final exerciseId = exerciseCache[exerciseKey];
+      if (exerciseId == null) {
+        rowsSkipped++;
+        continue;
+      }
+
+      // Create template set
+      await database.insert('template_sets', {
+        'template_id': templateId,
+        'exercise_id': exerciseId,
+        'set_order': int.tryParse(setOrderStr) ?? 1,
+        'target_repetitions': int.tryParse(targetRepsStr ?? ''),
+        'target_weight_kg': double.tryParse(targetWeightStr ?? ''),
+        'target_duration_seconds': int.tryParse(targetDurationStr ?? ''),
+        'target_distance_meters': double.tryParse(targetDistanceStr ?? ''),
+      });
+    }
+
+    // === Import WORKOUTS ===
+    final workoutRows = sections['WORKOUTS'] ?? [];
+    for (final row in workoutRows) {
+      if (row.isEmpty) {
+        rowsSkipped++;
+        continue;
+      }
+      final dateStr = row[0]?.toString() ?? '';
+      final durationStr = row.length > 1 ? row[1]?.toString() : null;
+      final notes = row.length > 2 ? row[2]?.toString() : null;
+
+      if (dateStr.isEmpty) {
+        rowsSkipped++;
+        continue;
+      }
+
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (e) {
+        rowsSkipped++;
+        continue;
+      }
+
+      final key = date.toIso8601String();
+      if (!workoutCache.containsKey(key)) {
+        final id = await database.insert('workouts', {
+          'date': key,
+          'duration_seconds': int.tryParse(durationStr ?? '') ?? 0,
+          'notes': notes?.isNotEmpty == true ? notes : null,
+        });
+        workoutCache[key] = id;
+        workoutsImported++;
+      }
+    }
+
+    // === Import WORKOUT_SETS ===
+    final setRows = sections['WORKOUT_SETS'] ?? [];
+    for (final row in setRows) {
+      if (row.length < 4) {
+        rowsSkipped++;
+        continue;
+      }
+      final workoutDateStr = row[0]?.toString() ?? '';
+      final exerciseName = row[1]?.toString() ?? '';
+      final exerciseTypeStr = row[2]?.toString() ?? '';
+      final setOrderStr = row[3]?.toString() ?? '';
+      final repsStr = row.length > 4 ? row[4]?.toString() : null;
+      final weightStr = row.length > 5 ? row[5]?.toString() : null;
+      final durationStr = row.length > 6 ? row[6]?.toString() : null;
+      final distanceStr = row.length > 7 ? row[7]?.toString() : null;
+      final notes = row.length > 8 ? row[8]?.toString() : null;
+
+      if (workoutDateStr.isEmpty || exerciseName.isEmpty) {
+        rowsSkipped++;
+        continue;
+      }
+
+      // Find workout
+      final workoutId = workoutCache[workoutDateStr];
+      if (workoutId == null) {
+        rowsSkipped++;
+        continue;
+      }
+
+      // Find exercise
+      final exerciseKey = '$exerciseName|$exerciseTypeStr';
+      final exerciseId = exerciseCache[exerciseKey];
+      if (exerciseId == null) {
+        rowsSkipped++;
+        continue;
+      }
+
+      await database.insert('workout_sets', {
+        'workout_id': workoutId,
+        'exercise_id': exerciseId,
+        'set_order': int.tryParse(setOrderStr) ?? 1,
+        'repetitions': int.tryParse(repsStr ?? ''),
+        'weight_kg': double.tryParse(weightStr ?? ''),
+        'duration_seconds': int.tryParse(durationStr ?? ''),
+        'distance_meters': double.tryParse(distanceStr ?? ''),
+        'notes': notes?.isNotEmpty == true ? notes : null,
+      });
+      setsImported++;
+    }
+
+    return ImportResult(
+      exercisesImported: exercisesImported,
+      templatesImported: templatesImported,
+      workoutsImported: workoutsImported,
+      setsImported: setsImported,
+      rowsSkipped: rowsSkipped,
+    );
   }
+
+  /// Parses CSV content into sections based on `# SECTION_NAME` markers.
+  Map<String, List<List<dynamic>>> _parseCsvSections(String content) {
+    final sections = <String, List<List<dynamic>>>{};
+    final lines = content.split('\n');
+    String? currentSection;
+    final currentRows = <String>[];
+
+    for (final line in lines) {
+      if (line.startsWith('# ')) {
+        // Save previous section
+        if (currentSection != null && currentRows.isNotEmpty) {
+          final parsed = const CsvToListConverter().convert(currentRows.join('\n'));
+          // Skip header row
+          sections[currentSection] = parsed.length > 1 ? parsed.sublist(1) : [];
+        }
+        currentSection = line.substring(2).trim();
+        currentRows.clear();
+      } else if (currentSection != null && line.trim().isNotEmpty) {
+        currentRows.add(line);
+      }
+    }
+
+    // Save last section
+    if (currentSection != null && currentRows.isNotEmpty) {
+      final parsed = const CsvToListConverter().convert(currentRows.join('\n'));
+      sections[currentSection] = parsed.length > 1 ? parsed.sublist(1) : [];
+    }
+
+    return sections;
+  }
+
+  ExerciseType? _parseExerciseType(String typeStr) {
+    for (final type in ExerciseType.values) {
+      if (type.name == typeStr) {
+        return type;
+      }
+    }
+    return null;
+  }
+}
+
+class ImportResult {
+  final int exercisesImported;
+  final int templatesImported;
+  final int workoutsImported;
+  final int setsImported;
+  final int rowsSkipped;
+
+  const ImportResult({
+    required this.exercisesImported,
+    required this.templatesImported,
+    required this.workoutsImported,
+    required this.setsImported,
+    required this.rowsSkipped,
+  });
 }

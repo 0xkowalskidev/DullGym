@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
 import 'package:dullgym/database/database_helper.dart';
 import 'package:dullgym/models/models.dart';
+import 'package:dullgym/screens/settings_screen.dart';
 
 class ActiveWorkoutScreen extends StatefulWidget {
   final List<TemplateSet>? templateSets;
@@ -54,8 +56,16 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSettings();
     _loadExercises();
     _startTimer();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _restDurationSeconds = prefs.getInt(defaultRestTimerSecondsKey) ?? defaultRestTimerSecondsDefault;
+    });
   }
 
   @override

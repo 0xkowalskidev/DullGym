@@ -25,6 +25,12 @@ dependencies:
   # Date handling
   intl: ^0.18.1
 
+  # Settings persistence
+  shared_preferences: ^2.2.0
+
+  # File picker for CSV import
+  file_picker: ^8.0.0
+
   # Haptic feedback
   vibration: ^2.0.0
 
